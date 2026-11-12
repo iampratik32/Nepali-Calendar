@@ -1,0 +1,17 @@
+{
+  "bsYear": 2083,
+  "version": 1,
+  "source": "INCOMPLETE placeholder. Only Bhai Tika (from the project plan) is filled in; the full list must be transcribed from the MoHA notice in the Nepal Gazette, 2082/11/18.",
+  "updated": "2026-11-12",
+  "holidays": [
+    {
+      "bs": "2083-07-25",
+      "ad": "2026-11-11",
+      "np": "भाइटीका",
+      "en": "Bhai Tika",
+      "kind": "public",
+      "scope": "national",
+      "major": true
+    }
+  ]
+}
