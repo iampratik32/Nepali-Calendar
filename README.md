@@ -8,7 +8,7 @@ Personal app, sideloaded. Kotlin + Jetpack Compose, minSdk 31, targetSdk 36.
 
 | | |
 |---|---|
-| Release APK size | **2.2 MiB** (2,316,491 bytes; R8 + resource shrinking; [CI run #3](https://github.com/iampratik32/Nepali-Calendar/actions/runs/43282669525), 12 Nov 2026). Most of it is Compose + Material 3. |
+| Release APK size | **2.2 MiB** (2,316,491 bytes; R8 + resource shrinking; [CI run #3](https://github.com/iampratik32/Nepali-Calendar/actions/runs/43282669525), 12 Nov 2026).) |
 | Permissions | `INTERNET`, `READ_CALENDAR`, `WRITE_CALENDAR` |
 | Dependencies | AndroidX Activity/Compose (foundation, material3, ui), kotlinx-coroutines. Nothing else. |
 
