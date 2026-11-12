@@ -96,12 +96,12 @@ class AppState(private val ctx: Context) {
 
     fun dataChanged() {
         dataGen = HolidayStore.generation
-        Widgets.updateAll(ctx)
+        Widgets.updateAllAsync(ctx)
     }
 
     fun eventsChanged() {
         eventsGen++
-        Widgets.updateAll(ctx)
+        Widgets.updateAllAsync(ctx)
     }
 
     fun onPermissionsResult() {

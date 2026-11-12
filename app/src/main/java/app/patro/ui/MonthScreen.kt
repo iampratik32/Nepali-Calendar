@@ -17,6 +17,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -67,7 +68,8 @@ class MonthPaging(val adFirst: Boolean) {
 fun MonthScreen(state: AppState) {
     val c = LocalColors.current
     val paging = remember(state.adFirst, state.dataGen) { MonthPaging(state.adFirst) }
-    val pager = rememberPagerState(initialPage = paging.pageOf(state.today)) { paging.count }
+    // New pager state when switching BS/AD: page indices mean different months.
+    val pager = key(paging) { rememberPagerState(initialPage = paging.pageOf(state.today)) { paging.count } }
     val scope = rememberCoroutineScope()
 
     Column(

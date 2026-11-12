@@ -61,7 +61,7 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         state.onResume()
         // Opening the app is one of the widget's refresh triggers.
-        Widgets.updateAll(this)
+        Widgets.updateAllAsync(this)
     }
 
     override fun onDestroy() {

@@ -68,6 +68,11 @@ object Sync {
                 Result(false, "Rejected: ${e.message}. Kept existing data.")
             } catch (e: IOException) {
                 Result(false, "Couldn't reach the data server (${e.javaClass.simpleName}: ${e.message ?: "no details"})")
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                HolidayStore.reload(ctx)
+                Result(false, "Sync failed: ${e.message ?: e.javaClass.simpleName}. Kept existing data.")
             }
         }
 
@@ -96,9 +101,15 @@ object Sync {
             val code = conn.responseCode
             if (code != HttpURLConnection.HTTP_OK) throw IOException("HTTP $code for ${url.substringAfterLast('/')}")
             conn.inputStream.use { input ->
-                val bytes = input.readNBytes(MAX_BYTES + 1)
-                if (bytes.size > MAX_BYTES) throw IOException("File too large")
-                return bytes.toString(Charsets.UTF_8)
+                val out = java.io.ByteArrayOutputStream()
+                val buf = ByteArray(8192)
+                while (true) {
+                    val n = input.read(buf)
+                    if (n < 0) break
+                    out.write(buf, 0, n)
+                    if (out.size() > MAX_BYTES) throw IOException("File too large")
+                }
+                return out.toString(Charsets.UTF_8.name())
             }
         } finally {
             conn.disconnect()

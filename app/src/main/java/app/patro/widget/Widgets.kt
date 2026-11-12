@@ -32,6 +32,14 @@ object Widgets {
     private val HM = DateTimeFormatter.ofPattern("HH:mm")
     private val DOW = DateTimeFormatter.ofPattern("EEE", Locale.ENGLISH)
 
+    private val worker = java.util.concurrent.Executors.newSingleThreadExecutor()
+
+    /** Same as [updateAll] but off the main thread (it may query the calendar). */
+    fun updateAllAsync(ctx: Context) {
+        val app = ctx.applicationContext
+        worker.execute { runCatching { updateAll(app) } }
+    }
+
     fun updateAll(ctx: Context) {
         val mgr = AppWidgetManager.getInstance(ctx)
         update(ctx, mgr, mgr.getAppWidgetIds(ComponentName(ctx, DateWidget::class.java)), withNext = false)
