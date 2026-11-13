@@ -90,6 +90,9 @@ object HolidayStore {
         return true
     }
 
+    /** Number of distinct holidays read from the phone's holiday calendars. */
+    fun googleCount(): Int = google.values.sumOf { day -> day.distinctBy { HolidayMerge.norm(it.en) }.size }
+
     fun holidayDir(ctx: Context) = File(ctx.filesDir, "holidays").apply { mkdirs() }
     fun calendarFile(ctx: Context) = File(ctx.filesDir, "calendar.json")
 

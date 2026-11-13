@@ -67,19 +67,27 @@ fun SettingsScreen(state: AppState, onRequestCalendar: () -> Unit) {
         TopBar(left = "Settings", onBack = { state.pop() }, actions = emptyList())
         Spacer(Modifier.height(16.dp))
 
-        // Sync
+        // Holidays: where they come from.
         PatroCard {
             SectionLabel("Holidays")
             Spacer(Modifier.height(10.dp))
-            val years = remember(state.dataGen) { HolidayStore.years().sorted() }
-            years.forEach { y ->
-                val f = HolidayStore.file(y)
-                if (f != null) {
-                    Text("${app.patro.bs.Np.digits(y)} · ${f.holidays.size} entries · v${f.version}", style = Type.body, color = c.fg)
-                    if (f.source.isNotBlank()) Text(f.source, style = Type.small, color = c.dim)
-                    Spacer(Modifier.height(8.dp))
-                }
-            }
+            val googleCount = remember(state.dataGen) { HolidayStore.googleCount() }
+            Text(
+                if (googleCount > 0) "Google Calendar: $googleCount holidays" else "Google Calendar: none",
+                style = Type.body,
+                color = c.fg,
+            )
+            Text(
+                if (googleCount > 0) "From calendars marked \"Holidays\" below."
+                else "Mark Google's \"Holidays in Nepal\" calendar as Holidays below.",
+                style = Type.small,
+                color = c.dim,
+            )
+            Spacer(Modifier.height(10.dp))
+            val builtIn = remember(state.dataGen) { HolidayStore.years().sumOf { HolidayStore.file(it)?.holidays?.size ?: 0 } }
+            Text("Built into Patro: $builtIn", style = Type.body, color = c.fg)
+            Text("Official MoHA holiday list. Sync fetches updates.", style = Type.small, color = c.dim)
+            Spacer(Modifier.height(10.dp))
             Text(
                 if (lastSync == 0L) "Never synced" else "Last synced: " +
                     Instant.ofEpochMilli(lastSync).atZone(state.zone()).format(STAMP),

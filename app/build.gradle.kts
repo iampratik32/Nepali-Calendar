@@ -23,10 +23,10 @@ android {
         applicationId = "app.patro"
         minSdk = 31
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
         val dataUrl = (project.findProperty("patro.dataUrl") as String?)
-            ?: "https://raw.githubusercontent.com/iampratik32/Nepali-Calendar/main/data/"
+            ?: "https://raw.githubusercontent.com/iampratik32/Nepali-Calendar/HEAD/data/"
         buildConfigField("String", "DATA_URL", "\"$dataUrl\"")
     }
 

@@ -8,13 +8,12 @@ import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.view.View
 import android.widget.RemoteViews
 import app.patro.MainActivity
 import app.patro.R
 import app.patro.bs.Bs
 import app.patro.bs.Np
-import app.patro.dotmatrix.TextDots
-import app.patro.dotmatrix.TextDots.Line
 import app.patro.events.CalendarRepo
 import app.patro.holidays.HolidayStore
 import java.time.DayOfWeek
@@ -28,16 +27,20 @@ import java.util.Locale
 import java.util.concurrent.Executors
 
 /**
- * Nothing-style glance widgets: no card, white dot-matrix lines straight on the wallpaper
- * (with a soft shadow for light wallpapers). Every size shows both the AD and the BS date.
+ * Glance-style widgets: no card, white system text straight on the wallpaper (with a shadow for
+ * light wallpapers). Every size shows both the AD and the BS date.
  */
 object Widgets {
+    /** One text line; the layout gives lines 1–2 a large size and the rest a small one. */
+    data class Line(val text: String, val color: Int)
+
     const val ACTION_REFRESH = "app.patro.action.WIDGET_REFRESH"
 
     private const val WHITE = 0xFFFFFFFF.toInt()
-    private const val DIM = 0xFFC4C4C4.toInt()
+    private const val DIM = 0xFFEDEDED.toInt()
     private const val RED = 0xFFFF3B3B.toInt()
 
+    private val LINE_IDS = intArrayOf(R.id.line1, R.id.line2, R.id.line3, R.id.line4, R.id.line5)
     private val HM = DateTimeFormatter.ofPattern("HH:mm")
     private val DOW = DateTimeFormatter.ofPattern("EEE", Locale.ENGLISH)
 
@@ -75,31 +78,31 @@ object Widgets {
 
     /** The text lines a widget of [kind] shows. */
     fun lines(ctx: Context, kind: Kind, today: LocalDate, zone: ZoneId): List<Line> {
-        if (!Bs.inRange(today)) return listOf(Line(Np.ad(today).uppercase(Locale.ENGLISH), WHITE, 15f))
+        if (!Bs.inRange(today)) return listOf(Line(Np.ad(today), WHITE))
         val bs = Bs.fromAd(today)
         val hols = HolidayStore.on(today)
         val dayOff = today.dayOfWeek == DayOfWeek.SATURDAY || hols.any { it.isDayOff }
-        val adFull = Np.ad(today).uppercase(Locale.ENGLISH)          // FRI, 13 NOV 2026
-        val adShort = adFull.substringBeforeLast(' ')                 // FRI, 13 NOV
+        val adFull = Np.ad(today)                                     // Fri, 13 Nov 2026
+        val adShort = adFull.substringBeforeLast(' ')                 // Fri, 13 Nov
         val npFull = "${Np.full(bs)}, ${Np.weekday(today)}"           // २७ कात्तिक २०८३, शुक्रबार
         val npColor = if (dayOff) RED else WHITE
-        val holidayLine = hols.firstOrNull()?.let { Line(it.title, RED, 14f) }
+        val holidayLine = hols.firstOrNull()?.let { Line(it.title, RED) }
 
         return when (kind) {
             Kind.WIDE -> listOfNotNull(
-                Line(adFull, WHITE, 15f),
-                Line(npFull, npColor, 14f),
+                Line(adFull, WHITE),
+                Line(npFull, npColor),
                 holidayLine,
             )
             Kind.SMALL -> listOfNotNull(
-                Line(adShort, WHITE, 15f),
-                Line("${Np.digits(bs.day)} ${Np.month(bs.month)}", npColor, 14f),
-                Line("${Np.digits(bs.year)} ${Np.weekday(today)}", npColor, 14f),
+                Line(adShort, WHITE),
+                Line("${Np.digits(bs.day)} ${Np.month(bs.month)} ${Np.digits(bs.year)}", npColor),
                 holidayLine,
+                Line(Np.weekday(today), npColor).takeIf { holidayLine == null },
             )
             Kind.NEXT -> buildList {
-                add(Line(adFull, WHITE, 15f))
-                add(Line(npFull, npColor, 14f))
+                add(Line(adFull, WHITE))
+                add(Line(npFull, npColor))
                 if (holidayLine != null) add(holidayLine)
                 nextHolidayLine(today, excludeToday = holidayLine != null)?.let { add(it) }
                 nextEventLine(ctx, today, zone)?.let { add(it) }
@@ -111,7 +114,7 @@ object Widgets {
         val h = HolidayStore.next(if (excludeToday) today.plusDays(1) else today) ?: return null
         val days = ChronoUnit.DAYS.between(today, h.ad)
         if (days > 60) return null
-        return Line("${h.title} · ${Np.daysLeft(days)}", if (h.isDayOff) RED else DIM, 14f)
+        return Line("${h.title} · ${Np.daysLeft(days)}", if (h.isDayOff) RED else DIM)
     }
 
     private fun nextEventLine(ctx: Context, today: LocalDate, zone: ZoneId): Line? {
@@ -124,23 +127,29 @@ object Widgets {
         val z = if (e.allDay) ZoneOffset.UTC else zone
         val t = Instant.ofEpochMilli(e.begin).atZone(z)
         val day = when (t.toLocalDate()) {
-            today -> "TODAY"
-            today.plusDays(1) -> "TMRW"
-            else -> t.format(DOW).uppercase(Locale.ENGLISH)
+            today -> "Today"
+            today.plusDays(1) -> "Tomorrow"
+            else -> t.format(DOW)
         }
         val time = if (e.allDay) day else "$day ${t.format(HM)}"
-        return Line("$time  ${e.title}".take(40), DIM, 14f)
+        return Line("$time · ${e.title}", DIM)
     }
 
     private fun render(ctx: Context, kind: Kind): RemoteViews {
         val zone = ZoneId.systemDefault()
         val today = LocalDate.now(zone)
-        val rv = RemoteViews(ctx.packageName, R.layout.widget_glance)
+        val rv = RemoteViews(ctx.packageName, R.layout.widget_text)
         val lines = lines(ctx, kind, today, zone)
-        val d = ctx.resources.displayMetrics.density
-        // Dot size in px; the ImageView scales the bitmap to fit the widget, keeping proportions.
-        rv.setImageViewBitmap(R.id.dots, TextDots.render(lines, dotPx = 2.4f * d, pitchPx = 3.2f * d))
-        rv.setContentDescription(R.id.dots, lines.joinToString(". ") { it.text })
+        LINE_IDS.forEachIndexed { i, id ->
+            val line = lines.getOrNull(i)
+            if (line == null) {
+                rv.setViewVisibility(id, View.GONE)
+            } else {
+                rv.setViewVisibility(id, View.VISIBLE)
+                rv.setTextViewText(id, line.text)
+                rv.setTextColor(id, line.color)
+            }
+        }
 
         val open = Intent(ctx, MainActivity::class.java)
             .putExtra(MainActivity.EXTRA_TODAY, true)

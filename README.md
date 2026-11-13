@@ -1,7 +1,7 @@
 # Patro
 
 A lightweight Nepali calendar for Nothing OS: Bikram Sambat (BS) + Gregorian (AD) dates,
-Nepal holidays, Google Calendar events and Nothing-style dot-matrix home-screen widgets.
+Nepal holidays, Google Calendar events and Nothing-style home-screen widgets.
 No ads, no tracking, no network except when you tap **Sync**.
 
 Personal app, sideloaded. Kotlin + Jetpack Compose, minSdk 31, targetSdk 36.
@@ -66,7 +66,7 @@ Android Studio (or `./gradlew assembleRelease` with the Android SDK installed). 
 | Google Calendar via Calendar Provider (read Instances, create/edit/delete Events + one reminder) | `…/events/` |
 | Dot-matrix glyphs (5×7, ०–९ and 0–9, `/ : -`) and renderer | `…/dotmatrix/` |
 | Month view (home, with today's BS + AD header), day sheet, event editor, Settings | `…/ui/` |
-| Widgets: 4×1 horizontal, 2×2, 4×2 "Date + next" — transparent, dot-matrix text | `…/widget/`, `…/dotmatrix/TextDots.kt` |
+| Widgets: 4×1 horizontal, 2×2, 4×2 "Date + next" — transparent, plain system text with a shadow | `…/widget/` |
 | Data that Sync downloads | `data/` (see `data/README.md`) |
 
 ### Status against the plan
@@ -91,10 +91,10 @@ via CI but can't run Android.
 - **Calendar table is compiled in** (`bs/BsData.kt`, 1.2 KB string) instead of `assets/calendar.json`,
   so widgets and tests can convert dates without a `Context`. `filesDir/calendar.json` from Sync still
   overrides it. Regenerate with `python3 scripts/gen_bsdata.py` after editing `data/calendar.json`.
-- **Data lives in `data/` of this repo** rather than a separate `patro-data` repo (this session couldn't
-  create repos). Sync reads `patro.dataUrl` from `gradle.properties`; `raw.githubusercontent.com` only
-  serves public repos, so either make this repo public or move `data/` to a public `patro-data` repo and
-  change that one line.
+- **Data lives in `data/` of this repo** rather than a separate `patro-data` repo. Sync reads
+  `patro.dataUrl` from `gradle.properties`, which points at `…/Nepali-Calendar/HEAD/data/` — `HEAD`
+  being the repo's default branch. `raw.githubusercontent.com` only serves **public** repos, so Sync
+  returns "not found" while the repo is private.
 - **"Today" follows the phone's time zone**, not a hard-coded Asia/Kathmandu, so the date stays right
   when travelling. On a phone set to Nepal time they're identical. The widget rolls over at local midnight.
 - **AD-first month view** shows Gregorian months (big AD digit, small BS digit in the corner) rather
@@ -122,8 +122,8 @@ via CI but can't run Android.
   checking against a printed patro before Falgun/Chaitra.
 - [ ] Projected years differ between datasets: 4 of 60 cross-check dates (all BS 2088–2090) disagree by
   a day, so the cross-check only covers BS ≤ 2087.
-- [ ] Widget look: built from one screenshot of Nothing's glance widget. Dot size and line spacing
-  may need tuning on the real screen; the Devanagari line is the system font turned into dots.
+- [ ] Widgets use plain system text (the dot-matrix attempt wasn't readable on the phone). Sizes may
+  need tuning: 22sp / 19sp for the two date lines, 15sp for the rest (`res/layout/widget_text.xml`).
 - [ ] Confirm the `major: true` festival list.
 - [ ] Install on the CMF Phone 2 Pro, then check: widget rollover after midnight, calendar sync to
   calendar.google.com, scrolling smoothness.

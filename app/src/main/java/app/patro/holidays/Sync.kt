@@ -67,7 +67,7 @@ object Sync {
                 HolidayStore.reload(ctx)
                 Result(false, "Rejected: ${e.message}. Kept existing data.")
             } catch (e: IOException) {
-                Result(false, "Couldn't reach the data server (${e.javaClass.simpleName}: ${e.message ?: "no details"})")
+                Result(false, "Sync failed: ${e.message ?: e.javaClass.simpleName}. Kept existing data.")
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -99,6 +99,9 @@ object Sync {
             conn.setRequestProperty("Cache-Control", "no-cache")
             conn.setRequestProperty("Accept", "application/json, text/plain")
             val code = conn.responseCode
+            if (code == HttpURLConnection.HTTP_NOT_FOUND) {
+                throw IOException("${url.substringAfterLast('/')} not found. The data repo must be public")
+            }
             if (code != HttpURLConnection.HTTP_OK) throw IOException("HTTP $code for ${url.substringAfterLast('/')}")
             conn.inputStream.use { input ->
                 val out = java.io.ByteArrayOutputStream()
