@@ -1,7 +1,7 @@
 # Patro
 
 A lightweight Nepali calendar for Nothing OS: Bikram Sambat (BS) + Gregorian (AD) dates,
-Nepal holidays, Google Calendar events and a dot-matrix home-screen widget.
+Nepal holidays, Google Calendar events and Nothing-style dot-matrix home-screen widgets.
 No ads, no tracking, no network except when you tap **Sync**.
 
 Personal app, sideloaded. Kotlin + Jetpack Compose, minSdk 31, targetSdk 36.
@@ -50,8 +50,11 @@ Android Studio (or `./gradlew assembleRelease` with the Android SDK installed). 
 
 - Keep the **Google Calendar** app installed and enabled (it does the syncing and the reminders).
 - Google Calendar → Settings → General → **Share Google Calendar data with other apps**: on.
-- In Patro, tap **Allow calendar access** (Today screen or Settings). The app works without it —
-  dates and holidays only.
+- In Patro, tap **Allow calendar access** (month view header or Settings). The app works without
+  it, but then shows only the holidays in Patro's own data files.
+- If you have Google's **Holidays in Nepal** calendar turned on in Google Calendar, Patro shows its
+  entries as red holidays (not as event dots). Check Settings → Calendars: it should say "Shown as
+  holidays"; if not, tap **Holidays** next to it.
 - Add the widgets: long-press the home screen → Widgets → Patro.
 
 ## What's in the app
@@ -59,11 +62,11 @@ Android Studio (or `./gradlew assembleRelease` with the Android SDK installed). 
 | Area | Where |
 |---|---|
 | BS ⇄ AD converter (BS 2000–2100), Devanagari formatting | `app/src/main/java/app/patro/bs/` |
-| Holiday files, local store, Sync | `…/holidays/` |
+| Holiday files, local store, Sync, merging in Google's holiday calendar | `…/holidays/` |
 | Google Calendar via Calendar Provider (read Instances, create/edit/delete Events + one reminder) | `…/events/` |
 | Dot-matrix glyphs (5×7, ०–९ and 0–9, `/ : -`) and renderer | `…/dotmatrix/` |
-| Today, Month, day sheet, event editor, Settings | `…/ui/` |
-| 2×2 "Date" and 4×2 "Date + next" widgets | `…/widget/` |
+| Month view (home, with today's BS + AD header), day sheet, event editor, Settings | `…/ui/` |
+| Widgets: 4×1 horizontal, 2×2, 4×2 "Date + next" — transparent, dot-matrix text | `…/widget/`, `…/dotmatrix/TextDots.kt` |
 | Data that Sync downloads | `data/` (see `data/README.md`) |
 
 ### Status against the plan
@@ -73,11 +76,11 @@ Android Studio (or `./gradlew assembleRelease` with the Android SDK installed). 
 | 0 | Project setup, R8, CI | Done. CI builds and tests on every push. **Not yet installed on the phone.** |
 | 1 | Converter + tests | Done; tests pass (see notes below on 2083-12-31 and the cross-check). |
 | 2 | Holiday data + Sync | Code done and tested. **2083 holiday list is a placeholder** — see Open items. |
-| 3 | Today / Month / Day sheet | Written; needs checking on the device (jank, look). |
+| 3 | Month (home) / Day sheet | Month view is now the start screen; needs checking on the device. |
 | 4 | Dot-matrix renderer + hero animation | Written; Devanagari glyphs need a look on the real screen. |
 | 5 | Calendar read + picker | Written; needs on-device check incl. recurring + all-day. |
 | 6 | Event editor | Written; edits/deletes apply to the whole series for repeating events. |
-| 7 | Widgets | Written; midnight rollover must be checked on the device. |
+| 7 | Widgets | Redone after first install in the style of Nothing's glance widget; rollover still to check. |
 | 8 | Polish | Light mode, empty states, licences screen exist; a week of daily use still to do. |
 
 Nothing above phase 2 has run on a phone yet — this was built in a cloud sandbox that can compile
@@ -105,7 +108,13 @@ via CI but can't run Android.
 - [ ] **Fill in `data/holidays/2083.json` from the MoHA gazette.** This sandbox couldn't reach the
   gazette or the pradhanlaw.com summary, and I didn't want to type holiday dates from memory. The file
   only has Bhai Tika (2083-07-25 = 2026-11-11, from the plan). Send the PDF (or the list) and I'll
-  transcribe it; `DataFilesTest` checks every `bs`/`ad` pair against the converter.
+  transcribe it; `DataFilesTest` checks every `bs`/`ad` pair against the converter. Until then,
+  holidays like Dashain come from Google's "Holidays in Nepal" calendar on the phone (if it's on),
+  and **Sync won't add any** — the data folder has nothing more to download yet.
+- [ ] **Google holiday calendar: public holiday vs observance.** Google's event text for this isn't
+  documented anywhere I could check, so Patro guesses: entries whose description mentions
+  "observance" get a red dot (festival), everything else is a red day off. Check a few dates on the
+  phone (day sheet says "from Google Calendar").
 - [ ] **2083-12-31 vs the dataset.** The plan's test "2083-12-31 ↔ 2027-04-13" comes from the MoHA
   notice, but the sonill dataset gives Chaitra 2083 only **30** days (its last day of 2083 is
   2083-12-30 = 2027-04-13). Both agree the year ends on 2027-04-13 and 2084 starts on 2027-04-14.
@@ -113,7 +122,8 @@ via CI but can't run Android.
   checking against a printed patro before Falgun/Chaitra.
 - [ ] Projected years differ between datasets: 4 of 60 cross-check dates (all BS 2088–2090) disagree by
   a day, so the cross-check only covers BS ≤ 2087.
-- [ ] Screenshots of Nothing Weather + a Nothing widget for the design pass (corner radius, padding).
+- [ ] Widget look: built from one screenshot of Nothing's glance widget. Dot size and line spacing
+  may need tuning on the real screen; the Devanagari line is the system font turned into dots.
 - [ ] Confirm the `major: true` festival list.
 - [ ] Install on the CMF Phone 2 Pro, then check: widget rollover after midnight, calendar sync to
   calendar.google.com, scrolling smoothness.
