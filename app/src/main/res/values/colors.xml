@@ -3,7 +3,4 @@
     <color name="fg">#FF111111</color>
     <color name="fg_dim">#FF7A7A7A</color>
     <color name="accent">#FFD71921</color>
-    <color name="widget_bg">#FFF2F2F0</color>
-    <color name="widget_fg">#FF111111</color>
-    <color name="widget_dim">#FF7A7A7A</color>
 </resources>

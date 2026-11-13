@@ -21,8 +21,16 @@ data class Holiday(
     /** `national`, `women`, `valley` or `community`. */
     val scope: String,
     val major: Boolean,
+    /** True when it came from a Google holiday calendar on the phone rather than Patro's data files. */
+    val fromGoogle: Boolean = false,
 ) {
     val isDayOff: Boolean get() = kind == KIND_PUBLIC
+
+    /** Main label: the Nepali name when we have one. */
+    val title: String get() = np.ifBlank { en }
+
+    /** Second label: the English name, if the title is Nepali. */
+    val subtitle: String get() = if (np.isNotBlank()) en else ""
 
     /** Default display rule: nationwide, or a big festival worth showing anyway. */
     val isShown: Boolean get() = scope == SCOPE_NATIONAL || major

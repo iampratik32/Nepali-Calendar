@@ -10,6 +10,8 @@ import android.provider.CalendarContract.Events
 import android.provider.CalendarContract.Instances
 import android.provider.CalendarContract.Reminders
 import app.patro.data.Prefs
+import app.patro.holidays.Holiday
+import app.patro.holidays.HolidayMerge
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -22,6 +24,8 @@ data class CalendarInfo(
     val account: String,
     val color: Int,
     val writable: Boolean,
+    /** Looks like a Google public-holiday calendar ("Holidays in Nepal"). */
+    val looksLikeHolidays: Boolean = false,
 )
 
 data class EventItem(
@@ -79,6 +83,7 @@ object CalendarRepo {
             arrayOf(
                 Calendars._ID, Calendars.CALENDAR_DISPLAY_NAME, Calendars.ACCOUNT_NAME,
                 Calendars.CALENDAR_COLOR, Calendars.CALENDAR_ACCESS_LEVEL, Calendars.VISIBLE,
+                Calendars.OWNER_ACCOUNT,
             ),
             null, null, "${Calendars.ACCOUNT_NAME}, ${Calendars.CALENDAR_DISPLAY_NAME}",
         )?.use { c ->
@@ -89,6 +94,7 @@ object CalendarRepo {
                     account = c.getString(2) ?: "",
                     color = c.getInt(3),
                     writable = c.getInt(4) >= Calendars.CAL_ACCESS_CONTRIBUTOR,
+                    looksLikeHolidays = HolidayMerge.looksLikeHolidayCalendar(c.getString(6), c.getString(1)),
                 )
             }
         }
@@ -97,6 +103,45 @@ object CalendarRepo {
 
     /** Calendar IDs to show: the user's choice, or every calendar if they never chose. */
     fun selectedIds(ctx: Context): Set<Long>? = Prefs(ctx).calendarIds
+
+    /**
+     * Calendars whose entries are treated as holidays (red dates) instead of events (dots):
+     * the user's choice in Settings, or the auto-detected Google holiday calendars.
+     */
+    fun holidayCalendarIds(ctx: Context, all: List<CalendarInfo>? = null): Set<Long> {
+        Prefs(ctx).holidayCalendarIds?.let { return it }
+        return (all ?: calendars(ctx)).filter { it.looksLikeHolidays }.map { it.id }.toSet()
+    }
+
+    /**
+     * Holidays from the phone's holiday calendars over [from, toExclusive), keyed by date.
+     * Uses the same Instances query as events.
+     */
+    fun holidayInstances(ctx: Context, from: LocalDate, toExclusive: LocalDate): Map<LocalDate, List<Holiday>> {
+        if (!canRead(ctx)) return emptyMap()
+        val ids = holidayCalendarIds(ctx)
+        if (ids.isEmpty()) return emptyMap()
+        val zone = ZoneId.systemDefault()
+        val uri = Instances.CONTENT_URI.buildUpon().also {
+            ContentUris.appendId(it, from.minusDays(1).atStartOfDay(zone).toInstant().toEpochMilli())
+            ContentUris.appendId(it, toExclusive.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli())
+        }.build()
+        val out = HashMap<LocalDate, MutableList<Holiday>>()
+        ctx.contentResolver.query(
+            uri,
+            arrayOf(Instances.TITLE, Instances.DESCRIPTION, Instances.ALL_DAY, Instances.BEGIN, Instances.END),
+            "${Instances.CALENDAR_ID} IN (${ids.joinToString(",")})", null, "${Instances.BEGIN} ASC",
+        )?.use { c ->
+            while (c.moveToNext()) {
+                val item = EventItem(0, c.getString(0) ?: "", c.getInt(2) == 1, c.getLong(3), c.getLong(4), 0, 0, false)
+                for (d in datesOf(item, zone)) {
+                    if (d.isBefore(from) || !d.isBefore(toExclusive)) continue
+                    HolidayMerge.fromCalendarEvent(item.title, c.getString(1), d)?.let { out.getOrPut(d) { ArrayList() } += it }
+                }
+            }
+        }
+        return out
+    }
 
     /**
      * Event instances overlapping [from, toExclusive), grouped by the local dates they cover.
@@ -111,6 +156,7 @@ object CalendarRepo {
         if (!canRead(ctx)) return emptyMap()
         val ids = selectedIds(ctx)
         if (ids != null && ids.isEmpty()) return emptyMap()
+        val holidayIds = holidayCalendarIds(ctx)
         // Widen by a day each side: all-day events are stored in UTC.
         val begin = from.minusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
         val end = toExclusive.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
@@ -121,6 +167,8 @@ object CalendarRepo {
         val selection = buildString {
             append("${Instances.VISIBLE} = 1")
             if (ids != null) append(" AND ${Instances.CALENDAR_ID} IN (${ids.joinToString(",")})")
+            // Holiday calendars show as holidays (red), not as event dots.
+            if (holidayIds.isNotEmpty()) append(" AND ${Instances.CALENDAR_ID} NOT IN (${holidayIds.joinToString(",")})")
         }
         val result = HashMap<LocalDate, MutableList<EventItem>>()
         ctx.contentResolver.query(

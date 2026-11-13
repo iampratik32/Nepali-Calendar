@@ -2,4 +2,5 @@
     <string name="app_name">Patro</string>
     <string name="widget_date_label">Patro · Date</string>
     <string name="widget_next_label">Patro · Date + next</string>
+    <string name="widget_wide_label">Patro · Date (horizontal)</string>
 </resources>

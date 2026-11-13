@@ -24,7 +24,6 @@ import app.patro.ui.MonthScreen
 import app.patro.ui.PatroTheme
 import app.patro.ui.Screen
 import app.patro.ui.SettingsScreen
-import app.patro.ui.TodayScreen
 import app.patro.ui.newDraft
 import app.patro.widget.Widgets
 import kotlinx.coroutines.Dispatchers
@@ -51,10 +50,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
-        if (intent?.getBooleanExtra(EXTRA_TODAY, false) == true) {
-            state.sheetDate = null
-            state.goTo(Screen.Today)
-        }
+        // Widget tap: back to the month view at today.
+        if (intent?.getBooleanExtra(EXTRA_TODAY, false) == true) state.goToToday()
     }
 
     override fun onResume() {
@@ -107,12 +104,17 @@ private fun PatroRoot(state: AppState) {
         if (draft != null) state.push(Screen.Editor(draft))
     }
 
+    // Re-read Google's holiday calendar (e.g. "Holidays in Nepal") whenever calendars change.
+    LaunchedEffect(state.eventsGen, state.canReadCalendar, state.today) {
+        withContext(Dispatchers.IO) { app.patro.holidays.HolidayStore.refreshGoogle(ctx) }
+        state.holidaysRefreshed()
+    }
+
     BackHandler(enabled = state.stack.size > 1) { state.pop() }
 
     Box(Modifier.fillMaxSize().background(c.bg)) {
         when (val s = state.screen) {
-            Screen.Today -> TodayScreen(state, requestCalendar, addEvent, openEvent)
-            Screen.Month -> MonthScreen(state)
+            Screen.Month -> MonthScreen(state, requestCalendar)
             Screen.Settings -> SettingsScreen(state, requestCalendar)
             is Screen.Editor -> EditorScreen(state, s.draft)
         }

@@ -80,9 +80,13 @@ fun DaySheet(
                         Dot(if (h.isDayOff) c.accent else c.dim, 8.dp)
                         Spacer(Modifier.width(10.dp))
                         Column {
-                            Text(h.np, style = Type.body, color = if (h.isDayOff) c.accent else c.fg)
+                            Text(h.title, style = Type.body, color = if (h.isDayOff) c.accent else c.fg)
                             Text(
-                                h.en + (if (h.isDayOff) " · public holiday" else " · festival"),
+                                listOf(
+                                    h.subtitle,
+                                    if (h.isDayOff) "public holiday" else "festival",
+                                    if (h.fromGoogle) "from Google Calendar" else "",
+                                ).filter { it.isNotBlank() }.joinToString(" · "),
                                 style = Type.small,
                                 color = c.dim,
                             )

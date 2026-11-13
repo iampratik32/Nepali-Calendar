@@ -8,73 +8,139 @@ import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.view.View
 import android.widget.RemoteViews
 import app.patro.MainActivity
 import app.patro.R
 import app.patro.bs.Bs
 import app.patro.bs.Np
-import app.patro.dotmatrix.DotMatrix
+import app.patro.dotmatrix.TextDots
+import app.patro.dotmatrix.TextDots.Line
 import app.patro.events.CalendarRepo
 import app.patro.holidays.HolidayStore
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.util.Locale
+import java.util.concurrent.Executors
 
-/** Rendering + scheduling shared by both widget sizes. */
+/**
+ * Nothing-style glance widgets: no card, white dot-matrix lines straight on the wallpaper
+ * (with a soft shadow for light wallpapers). Every size shows both the AD and the BS date.
+ */
 object Widgets {
     const val ACTION_REFRESH = "app.patro.action.WIDGET_REFRESH"
-    private const val DOT_PX = 22f
+
+    private const val WHITE = 0xFFFFFFFF.toInt()
+    private const val DIM = 0xFFC4C4C4.toInt()
+    private const val RED = 0xFFFF3B3B.toInt()
+
     private val HM = DateTimeFormatter.ofPattern("HH:mm")
     private val DOW = DateTimeFormatter.ofPattern("EEE", Locale.ENGLISH)
 
-    private val worker = java.util.concurrent.Executors.newSingleThreadExecutor()
+    enum class Kind { SMALL, WIDE, NEXT }
 
-    /** Same as [updateAll] but off the main thread (it may query the calendar). */
-    fun updateAllAsync(ctx: Context) {
+    private val worker = Executors.newSingleThreadExecutor()
+
+    /** Same as [updateAll] but off the main thread (it queries the calendar). */
+    fun updateAllAsync(ctx: Context, onDone: (() -> Unit)? = null) {
         val app = ctx.applicationContext
-        worker.execute { runCatching { updateAll(app) } }
+        worker.execute {
+            runCatching { updateAll(app) }
+            onDone?.invoke()
+        }
     }
 
     fun updateAll(ctx: Context) {
         val mgr = AppWidgetManager.getInstance(ctx)
-        update(ctx, mgr, mgr.getAppWidgetIds(ComponentName(ctx, DateWidget::class.java)), withNext = false)
-        update(ctx, mgr, mgr.getAppWidgetIds(ComponentName(ctx, DateNextWidget::class.java)), withNext = true)
+        HolidayStore.ensureLoaded(ctx)
+        HolidayStore.refreshGoogle(ctx)
+        update(ctx, mgr, mgr.getAppWidgetIds(ComponentName(ctx, DateWidget::class.java)), Kind.SMALL, refresh = false)
+        update(ctx, mgr, mgr.getAppWidgetIds(ComponentName(ctx, DateWideWidget::class.java)), Kind.WIDE, refresh = false)
+        update(ctx, mgr, mgr.getAppWidgetIds(ComponentName(ctx, DateNextWidget::class.java)), Kind.NEXT, refresh = false)
+        scheduleMidnight(ctx)
     }
 
-    fun update(ctx: Context, mgr: AppWidgetManager, ids: IntArray, withNext: Boolean) {
+    fun update(ctx: Context, mgr: AppWidgetManager, ids: IntArray, kind: Kind, refresh: Boolean = true) {
         if (ids.isEmpty()) return
         HolidayStore.ensureLoaded(ctx)
-        val views = render(ctx, withNext)
+        if (refresh) HolidayStore.refreshGoogle(ctx)
+        val views = render(ctx, kind)
         for (id in ids) mgr.updateAppWidget(id, views)
         scheduleMidnight(ctx)
     }
 
-    private fun render(ctx: Context, withNext: Boolean): RemoteViews {
-        val zone = ZoneId.systemDefault()
-        val today = LocalDate.now(zone)
-        val rv = RemoteViews(ctx.packageName, if (withNext) R.layout.widget_date_next else R.layout.widget_date)
-        if (!Bs.inRange(today)) return rv
+    /** The text lines a widget of [kind] shows. */
+    fun lines(ctx: Context, kind: Kind, today: LocalDate, zone: ZoneId): List<Line> {
+        if (!Bs.inRange(today)) return listOf(Line(Np.ad(today).uppercase(Locale.ENGLISH), WHITE, 15f))
         val bs = Bs.fromAd(today)
         val hols = HolidayStore.on(today)
+        val dayOff = today.dayOfWeek == DayOfWeek.SATURDAY || hols.any { it.isDayOff }
+        val adFull = Np.ad(today).uppercase(Locale.ENGLISH)          // FRI, 13 NOV 2026
+        val adShort = adFull.substringBeforeLast(' ')                 // FRI, 13 NOV
+        val npFull = "${Np.full(bs)}, ${Np.weekday(today)}"           // २७ कात्तिक २०८३, शुक्रबार
+        val npColor = if (dayOff) RED else WHITE
+        val holidayLine = hols.firstOrNull()?.let { Line(it.title, RED, 14f) }
 
-        // Drawn white; the layout tints it with @color/widget_fg so it follows light/dark.
-        val red = today.dayOfWeek == DayOfWeek.SATURDAY || hols.any { it.isDayOff }
-        val shown = if (red) R.id.digits_red else R.id.digits
-        val hidden = if (red) R.id.digits else R.id.digits_red
-        rv.setImageViewBitmap(shown, DotMatrix(Np.digits(bs.day)).toBitmap(DOT_PX, 0xFFFFFFFF.toInt()))
-        rv.setContentDescription(shown, Np.fullEn(bs))
-        rv.setViewVisibility(shown, View.VISIBLE)
-        rv.setViewVisibility(hidden, View.GONE)
-        rv.setTextViewText(R.id.month, Np.month(bs.month))
-        rv.setTextViewText(R.id.ad, Np.ad(today).substringBeforeLast(' '))
-        rv.setViewVisibility(R.id.holiday_dot, if (hols.isNotEmpty()) View.VISIBLE else View.GONE)
+        return when (kind) {
+            Kind.WIDE -> listOfNotNull(
+                Line(adFull, WHITE, 15f),
+                Line(npFull, npColor, 14f),
+                holidayLine,
+            )
+            Kind.SMALL -> listOfNotNull(
+                Line(adShort, WHITE, 15f),
+                Line("${Np.digits(bs.day)} ${Np.month(bs.month)}", npColor, 14f),
+                Line("${Np.digits(bs.year)} ${Np.weekday(today)}", npColor, 14f),
+                holidayLine,
+            )
+            Kind.NEXT -> buildList {
+                add(Line(adFull, WHITE, 15f))
+                add(Line(npFull, npColor, 14f))
+                if (holidayLine != null) add(holidayLine)
+                nextHolidayLine(today, excludeToday = holidayLine != null)?.let { add(it) }
+                nextEventLine(ctx, today, zone)?.let { add(it) }
+            }
+        }
+    }
 
-        if (withNext) fillNext(ctx, rv, today, zone)
+    private fun nextHolidayLine(today: LocalDate, excludeToday: Boolean): Line? {
+        val h = HolidayStore.next(if (excludeToday) today.plusDays(1) else today) ?: return null
+        val days = ChronoUnit.DAYS.between(today, h.ad)
+        if (days > 60) return null
+        return Line("${h.title} · ${Np.daysLeft(days)}", if (h.isDayOff) RED else DIM, 14f)
+    }
+
+    private fun nextEventLine(ctx: Context, today: LocalDate, zone: ZoneId): Line? {
+        val now = System.currentTimeMillis()
+        val e = runCatching {
+            CalendarRepo.instances(ctx, today, today.plusDays(8), zone).values.flatten()
+                .filter { it.end > now }
+                .minByOrNull { it.begin }
+        }.getOrNull() ?: return null
+        val z = if (e.allDay) ZoneOffset.UTC else zone
+        val t = Instant.ofEpochMilli(e.begin).atZone(z)
+        val day = when (t.toLocalDate()) {
+            today -> "TODAY"
+            today.plusDays(1) -> "TMRW"
+            else -> t.format(DOW).uppercase(Locale.ENGLISH)
+        }
+        val time = if (e.allDay) day else "$day ${t.format(HM)}"
+        return Line("$time  ${e.title}".take(40), DIM, 14f)
+    }
+
+    private fun render(ctx: Context, kind: Kind): RemoteViews {
+        val zone = ZoneId.systemDefault()
+        val today = LocalDate.now(zone)
+        val rv = RemoteViews(ctx.packageName, R.layout.widget_glance)
+        val lines = lines(ctx, kind, today, zone)
+        val d = ctx.resources.displayMetrics.density
+        // Dot size in px; the ImageView scales the bitmap to fit the widget, keeping proportions.
+        rv.setImageViewBitmap(R.id.dots, TextDots.render(lines, dotPx = 2.4f * d, pitchPx = 3.2f * d))
+        rv.setContentDescription(R.id.dots, lines.joinToString(". ") { it.text })
 
         val open = Intent(ctx, MainActivity::class.java)
             .putExtra(MainActivity.EXTRA_TODAY, true)
@@ -86,58 +152,9 @@ object Widgets {
         return rv
     }
 
-    private fun fillNext(ctx: Context, rv: RemoteViews, today: LocalDate, zone: ZoneId) {
-        val now = System.currentTimeMillis()
-        val event = runCatching {
-            CalendarRepo.instances(ctx, today, today.plusDays(8), zone).values.flatten()
-                .filter { if (it.allDay) !Instant.ofEpochMilli(it.end).isBefore(Instant.ofEpochMilli(now)) else it.end > now }
-                .distinctBy { it.eventId to it.begin }
-                .minByOrNull { it.begin }
-        }.getOrNull()
-        val holiday = HolidayStore.next(today)
-        val holidayLine = holiday?.let {
-            val days = ChronoUnit.DAYS.between(today, it.ad)
-            "${it.np} · ${Np.daysLeft(days)}"
-        }
-
-        if (event != null) {
-            rv.setTextViewText(R.id.next_label, "NEXT EVENT")
-            rv.setTextViewText(R.id.next_title, event.title)
-            rv.setTextViewText(R.id.next_when, describe(event.begin, event.allDay, today, zone))
-            if (holidayLine != null) {
-                rv.setTextViewText(R.id.next2, holidayLine)
-                rv.setViewVisibility(R.id.next2, View.VISIBLE)
-            } else {
-                rv.setViewVisibility(R.id.next2, View.GONE)
-            }
-        } else if (holiday != null) {
-            rv.setTextViewText(R.id.next_label, "NEXT HOLIDAY")
-            rv.setTextViewText(R.id.next_title, holiday.np)
-            rv.setTextViewText(R.id.next_when, "${Np.daysLeft(ChronoUnit.DAYS.between(today, holiday.ad))} · ${holiday.en}")
-            rv.setViewVisibility(R.id.next2, View.GONE)
-        } else {
-            rv.setTextViewText(R.id.next_label, "NEXT")
-            rv.setTextViewText(R.id.next_title, "Nothing coming up")
-            rv.setTextViewText(R.id.next_when, "")
-            rv.setViewVisibility(R.id.next2, View.GONE)
-        }
-    }
-
-    private fun describe(begin: Long, allDay: Boolean, today: LocalDate, zone: ZoneId): String {
-        val z = if (allDay) java.time.ZoneOffset.UTC else zone
-        val t = Instant.ofEpochMilli(begin).atZone(z)
-        val d = t.toLocalDate()
-        val day = when (d) {
-            today -> "Today"
-            today.plusDays(1) -> "Tomorrow"
-            else -> t.format(DOW)
-        }
-        return if (allDay) day else "$day ${t.format(HM)}"
-    }
-
     /**
-     * Inexact alarm a little after local midnight so the date rolls over. `updatePeriodMillis`
-     * (30 min) is the backup; time/zone changes and opening the app also refresh.
+     * Alarm a little after local midnight so the date rolls over. `updatePeriodMillis` (30 min)
+     * is the backup; time/zone changes and opening the app also refresh.
      */
     fun scheduleMidnight(ctx: Context) {
         val am = ctx.getSystemService(AlarmManager::class.java) ?: return
@@ -152,19 +169,29 @@ object Widgets {
     }
 }
 
+/** 2×2: AD date, BS day + month, BS year + weekday. */
 class DateWidget : AppWidgetProvider() {
     override fun onUpdate(ctx: Context, mgr: AppWidgetManager, ids: IntArray) =
-        Widgets.update(ctx, mgr, ids, withNext = false)
+        Widgets.update(ctx, mgr, ids, Widgets.Kind.SMALL)
 }
 
+/** 4×1 horizontal, like Nothing's glance widget: AD date line + BS date line. */
+class DateWideWidget : AppWidgetProvider() {
+    override fun onUpdate(ctx: Context, mgr: AppWidgetManager, ids: IntArray) =
+        Widgets.update(ctx, mgr, ids, Widgets.Kind.WIDE)
+}
+
+/** 4×2: both dates plus the next holiday and next event. */
 class DateNextWidget : AppWidgetProvider() {
     override fun onUpdate(ctx: Context, mgr: AppWidgetManager, ids: IntArray) =
-        Widgets.update(ctx, mgr, ids, withNext = true)
+        Widgets.update(ctx, mgr, ids, Widgets.Kind.NEXT)
 }
 
 /** Midnight alarm + time/zone/locale changes → redraw every widget. */
 class RefreshReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
-        Widgets.updateAll(ctx)
+        // Keep the receiver alive until the background redraw is done.
+        val pending = goAsync()
+        Widgets.updateAllAsync(ctx) { pending.finish() }
     }
 }

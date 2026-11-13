@@ -108,7 +108,7 @@ fun SettingsScreen(state: AppState, onRequestCalendar: () -> Unit) {
 
         // Calendars
         PatroCard {
-            SectionLabel("Calendars to show")
+            SectionLabel("Calendars")
             Spacer(Modifier.height(10.dp))
             if (!state.canReadCalendar) {
                 Text("Patro reads and writes the events your phone already syncs with Google Calendar.", style = Type.small, color = c.dim)
@@ -176,9 +176,15 @@ private fun CalendarPicker(state: AppState) {
     val c = LocalColors.current
     val ctx = LocalContext.current
     var cals by remember { mutableStateOf<List<CalendarInfo>>(emptyList()) }
+    var holidayIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var chosen by remember { mutableStateOf(state.prefs.calendarIds) }
     LaunchedEffect(state.eventsGen) {
-        cals = withContext(Dispatchers.IO) { CalendarRepo.calendars(ctx) }
+        val (all, hol) = withContext(Dispatchers.IO) {
+            val all = CalendarRepo.calendars(ctx)
+            all to CalendarRepo.holidayCalendarIds(ctx, all)
+        }
+        cals = all
+        holidayIds = hol
     }
     if (cals.isEmpty()) {
         Text(
@@ -188,28 +194,47 @@ private fun CalendarPicker(state: AppState) {
         )
         return
     }
+    Text(
+        "Tick a calendar to show its events as dots. Mark it \"Holidays\" to show its entries as red " +
+            "holidays instead, e.g. Google's \"Holidays in Nepal\".",
+        style = Type.small,
+        color = c.dim,
+    )
     val accounts = cals.groupBy { it.account }
     accounts.forEach { (account, list) ->
-        Text(account, style = Type.small, color = c.dim, modifier = Modifier.padding(top = 8.dp))
+        Text(account, style = Type.small, color = c.dim, modifier = Modifier.padding(top = 10.dp))
         list.forEach { cal ->
+            val isHoliday = cal.id in holidayIds
             val on = chosen?.contains(cal.id) ?: true
-            Row(
-                Modifier.fillMaxWidth().clickable {
-                    val cur = chosen ?: cals.map { it.id }.toSet()
-                    val next = if (on) cur - cal.id else cur + cal.id
-                    chosen = next
-                    state.prefs.calendarIds = next
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier.weight(1f).clickable(enabled = !isHoliday) {
+                        val cur = chosen ?: cals.map { it.id }.toSet()
+                        val next = if (on) cur - cal.id else cur + cal.id
+                        chosen = next
+                        state.prefs.calendarIds = next
+                        state.eventsChanged()
+                    },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(
+                        checked = on && !isHoliday,
+                        onCheckedChange = null,
+                        enabled = !isHoliday,
+                        colors = CheckboxDefaults.colors(checkedColor = Color(cal.color or 0xFF000000.toInt()), uncheckedColor = c.dim),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Column {
+                        Text(cal.name, style = Type.body, color = c.fg)
+                        if (isHoliday) Text("Shown as holidays", style = Type.small, color = c.accent)
+                    }
+                }
+                Pill("Holidays", selected = isHoliday, onClick = {
+                    val next = if (isHoliday) holidayIds - cal.id else holidayIds + cal.id
+                    holidayIds = next
+                    state.prefs.holidayCalendarIds = next
                     state.eventsChanged()
-                },
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Checkbox(
-                    checked = on,
-                    onCheckedChange = null,
-                    colors = CheckboxDefaults.colors(checkedColor = Color(cal.color or 0xFF000000.toInt()), uncheckedColor = c.dim),
-                )
-                Spacer(Modifier.width(4.dp))
-                Text(cal.name, style = Type.body, color = c.fg)
+                })
             }
         }
     }

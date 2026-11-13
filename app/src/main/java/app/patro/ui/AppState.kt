@@ -19,7 +19,6 @@ import java.time.LocalDate
 import java.time.ZoneId
 
 sealed interface Screen {
-    data object Today : Screen
     data object Month : Screen
     data object Settings : Screen
     data class Editor(val draft: EventDraft) : Screen
@@ -29,7 +28,7 @@ sealed interface Screen {
 class AppState(private val ctx: Context) {
     val prefs = Prefs(ctx)
 
-    val stack = mutableStateListOf<Screen>(Screen.Today)
+    val stack = mutableStateListOf<Screen>(Screen.Month)
     val screen: Screen get() = stack.last()
 
     var theme by mutableIntStateOf(prefs.theme)
@@ -52,6 +51,10 @@ class AppState(private val ctx: Context) {
 
     /** Day sheet: the date currently open, or null. */
     var sheetDate: LocalDate? by mutableStateOf(null)
+
+    /** Bumped to make the month view scroll back to the current month. */
+    var jumpToToday by mutableIntStateOf(0)
+        private set
 
     /** Event ID waiting to be loaded into the editor. */
     var pendingOpen: Long? by mutableStateOf(null)
@@ -88,6 +91,20 @@ class AppState(private val ctx: Context) {
     fun setAdFirstPref(v: Boolean) {
         prefs.adFirst = v
         adFirst = v
+    }
+
+    fun goToToday() {
+        sheetDate = null
+        goTo(Screen.Month)
+        jumpToToday++
+    }
+
+    /** Called after the phone's holiday calendars were re-read. */
+    fun holidaysRefreshed() {
+        if (dataGen != HolidayStore.generation) {
+            dataGen = HolidayStore.generation
+            Widgets.updateAllAsync(ctx)
+        }
     }
 
     fun refreshToday() {

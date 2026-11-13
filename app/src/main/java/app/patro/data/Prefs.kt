@@ -38,6 +38,14 @@ class Prefs(context: Context) {
             else p.edit().putStringSet("calendar_ids", v.map { it.toString() }.toSet()).apply()
         }
 
+    /** Calendars treated as holiday sources. `null` = auto-detect Google holiday calendars. */
+    var holidayCalendarIds: Set<Long>?
+        get() = p.getStringSet("holiday_calendar_ids", null)?.mapNotNull { it.toLongOrNull() }?.toSet()
+        set(v) {
+            if (v == null) p.edit().remove("holiday_calendar_ids").apply()
+            else p.edit().putStringSet("holiday_calendar_ids", v.map { it.toString() }.toSet()).apply()
+        }
+
     /** Calendar ID last used in the event editor. */
     var lastEditCalendar: Long
         get() = p.getLong("last_edit_calendar", -1L)

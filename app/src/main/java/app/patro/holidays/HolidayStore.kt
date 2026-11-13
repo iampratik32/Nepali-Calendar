@@ -22,6 +22,10 @@ object HolidayStore {
     @Volatile
     private var loaded = false
 
+    /** Entries from the phone's holiday calendars (see [refreshGoogle]), keyed by date. */
+    @Volatile
+    private var google: Map<LocalDate, List<Holiday>> = emptyMap()
+
     /** Bumped on every reload so UI can recompose. */
     @Volatile
     var generation: Int = 0
@@ -70,6 +74,22 @@ object HolidayStore {
             }
     }
 
+    /**
+     * Reloads holidays from the phone's Google holiday calendars for about a year back and two
+     * ahead. Does a provider query, so call it off the main thread. Returns true if anything changed.
+     */
+    fun refreshGoogle(context: Context): Boolean {
+        val ctx = context.applicationContext
+        val today = LocalDate.now()
+        val fresh = runCatching {
+            app.patro.events.CalendarRepo.holidayInstances(ctx, today.minusYears(1), today.plusYears(2))
+        }.getOrElse { emptyMap() }
+        if (fresh == google) return false
+        google = fresh
+        synchronized(this) { generation++ }
+        return true
+    }
+
     fun holidayDir(ctx: Context) = File(ctx.filesDir, "holidays").apply { mkdirs() }
     fun calendarFile(ctx: Context) = File(ctx.filesDir, "calendar.json")
 
@@ -77,27 +97,30 @@ object HolidayStore {
     fun file(year: Int): HolidayFile? = files[year]
     fun years(): Set<Int> = files.keys
 
-    /** Holidays on [date] that pass the display rule. */
+    /** Holidays on [date] that pass the display rule: Patro's data plus the phone's holiday calendars. */
     fun on(date: LocalDate): List<Holiday> {
         if (!Bs.inRange(date)) return emptyList()
         val bs = Bs.fromAd(date)
-        return files[bs.year]?.holidays?.filter { it.ad == date && it.isShown }.orEmpty()
+        val own = files[bs.year]?.holidays?.filter { it.ad == date && it.isShown }.orEmpty()
+        return HolidayMerge.merge(own, google[date].orEmpty())
     }
-
-    /** Shown holidays in a BS month, keyed by BS day. */
-    fun inMonth(year: Int, month: Int): Map<Int, List<Holiday>> =
-        files[year]?.holidays.orEmpty()
-            .filter { it.bs.month == month && it.isShown }
-            .groupBy { it.bs.day }
 
     /** Next shown holiday on or after [from], within about a year. */
     fun next(from: LocalDate): Holiday? {
         if (!Bs.inRange(from)) return null
         val y = Bs.fromAd(from).year
-        return (y..y + 1).asSequence()
+        val own = (y..y + 1).asSequence()
             .mapNotNull { files[it] }
             .flatMap { it.holidays.asSequence() }
             .filter { it.isShown && !it.ad.isBefore(from) }
             .minByOrNull { it.ad }
+        val g = google.entries.asSequence()
+            .filter { !it.key.isBefore(from) && it.value.isNotEmpty() }
+            .minByOrNull { it.key }
+        return when {
+            g == null -> own
+            own == null || g.key.isBefore(own.ad) -> on(g.key).firstOrNull() ?: g.value.first()
+            else -> own
+        }
     }
 }
